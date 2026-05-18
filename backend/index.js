@@ -18,14 +18,20 @@ const mqttClient = mqtt.connect('mqtt://localhost: 1883')
 
 mqttClient.on('connect', () => {
   console.log('backend connected to MQTT broker')
-  mqttClient.subscribe('meter/001/telemetry')
+  mqttClient.subscribe('meter/+/telemetry')
 })
 
 mqttClient.on('message', (topic, message) => {
   const data = JSON.parse(message.toString())
+  const [, deviceId] = topic.split('/')
 
-  console.log('Received from MTQQ:', data)
-  io.emit('telemetry', data)
+  const telemetry = {
+    ...data,
+    deviceId,
+  }
+
+  console.log('Received from MTQQ:', telemetry)
+  io.emit('telemetry', telemetry)
 })
 
 app.get('/', (req, res) => {
