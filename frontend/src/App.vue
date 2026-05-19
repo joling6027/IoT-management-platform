@@ -1,6 +1,23 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from "vue";
 import { io, Socket } from "socket.io-client";
+import VChart from "vue-echarts";
+import { use } from "echarts/core";
+import { CanvasRenderer } from "echarts/renderers";
+import { LineChart } from "echarts/charts";
+import {
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+} from "echarts/components";
+
+use([
+  CanvasRenderer,
+  LineChart,
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+]);
 
 type Telemetry = {
   deviceId: string;
@@ -16,6 +33,7 @@ type Telemetry = {
 
 const devices = ref<Record<string, Telemetry>>({});
 const selectedDeviceId = ref<string | null>(null);
+const history = ref<Telemetry[]>([]);
 
 let socket: Socket;
 let statusTimer: number;
@@ -48,12 +66,14 @@ onMounted(() => {
     devices.value[data.deviceId] = {
       ...data,
       online: true,
-      alert: alerts.join(', '),
+      alert: alerts.join(", "),
       lastSeen: Date.now(),
     };
 
     if (!selectedDeviceId.value) {
       selectedDeviceId.value = data.deviceId;
+      loadHistory(data.deviceId);
+      console.log(history.value);
     }
   });
 
@@ -79,6 +99,69 @@ const selectedDevice = computed(() => {
   if (!selectedDeviceId.value) return null;
   return devices.value[selectedDeviceId.value];
 });
+
+const chartOption = computed(() => ({
+  tooltip: {
+    trigger: "axis",
+  },
+  legend: {
+    data: ["Voltage", "Current", "Power"],
+  },
+  xAxis: {
+    type: "category",
+    data: history.value.map((item) =>
+      new Date(item.timestamp).toLocaleTimeString(),
+    ),
+  },
+  yAxis: [
+    {
+      type: "value",
+      name: "Voltage (V)",
+      position: "left",
+    },
+    {
+      type: "value",
+      name: "Current (A)",
+      position: "right",
+    },
+    {
+      type: "value",
+      name: "Power (W)",
+      position: "right",
+      offset: 80,
+    },
+  ],
+  series: [
+    {
+      name: "Voltage",
+      type: "line",
+      yAxisIndex: 0,
+      data: history.value.map((item) => Number(item.voltage)),
+    },
+    {
+      name: "Current",
+      type: "line",
+      yAxisIndex: 1,
+      data: history.value.map((item) => Number(item.current)),
+    },
+    {
+      name: "Power",
+      type: "line",
+      yAxisIndex: 2,
+      data: history.value.map((item) => Number(item.power)),
+    },
+  ],
+}));
+
+async function loadHistory(deviceId: string) {
+  const response = await fetch(`http://localhost:3000/telemetry/${deviceId}`);
+  history.value = await response.json();
+}
+
+function selectDevice(deviceId: string) {
+  selectedDeviceId.value = deviceId;
+  loadHistory(deviceId);
+}
 </script>
 
 <template>
@@ -90,7 +173,7 @@ const selectedDevice = computed(() => {
       <button
         v-for="device in Object.values(devices)"
         :key="device.deviceId"
-        @click="selectedDeviceId = device.deviceId"
+        @click="selectDevice(device.deviceId)"
       >
         Meter {{ device.deviceId }}
       </button>
@@ -106,6 +189,12 @@ const selectedDevice = computed(() => {
       </p>
       <p>Online: {{ selectedDevice.online }}</p>
       <p>Alert: {{ selectedDevice.alert || "Normal" }}</p>
+
+      <VChart
+        v-if="history.length"
+        :option="chartOption"
+        style="height: 400px; width: 100%"
+      />
     </section>
   </main>
 </template>
