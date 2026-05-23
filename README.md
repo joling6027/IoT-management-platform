@@ -80,6 +80,19 @@ meter/002/telemetry
 meter/003/telemetry
 ```
 
+While the simulator is running, you can type commands into its terminal:
+
+```text
+status
+offline 002
+online 002
+random off
+random on
+help
+```
+
+Use `random off` when you want to manually test one device at a time without the simulator changing device status automatically.
+
 ### 3. Start The Frontend
 
 ```bash
