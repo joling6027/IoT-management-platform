@@ -36,47 +36,61 @@ const mqttClient = mqtt.connect('mqtt://localhost:1883')
 mqttClient.on('connect', () => {
   console.log('backend connected to MQTT broker')
   mqttClient.subscribe('meter/+/telemetry')
+  mqttClient.subscribe('meter/+/status')
 })
 
 mqttClient.on('message', (topic, message) => {
 
   try {
     const data = JSON.parse(message.toString())
-    const [, deviceId] = topic.split('/')
+    const [, deviceId, messageType] = topic.split('/')
   
-    const telemetry = {
-      ...data,
-      deviceId,
-    }
-    const error = validateTelemetry(telemetry)
+    if (messageType === "telemetry") {
+      const telemetry = {
+        ...data,
+        deviceId,
+      }
+      const error = validateTelemetry(telemetry)
+    
+      if (error) {
+        console.error('Validation error: ', error)
+        return
+      }
+    
+      console.log('Received MQTT telemetry:', telemetry)
+      io.emit('telemetry', telemetry)
   
-    if (error) {
-      console.error('Validation error: ', error)
+      db.run(
+        `
+        INSERT INTO telemetry (
+          deviceId,
+          voltage,
+          current,
+          power,
+          timestamp
+        )
+        VALUES (?, ?, ?, ?, ?)
+        `,
+        [
+          telemetry.deviceId,
+          telemetry.voltage,
+          telemetry.current,
+          telemetry.power,
+          telemetry.timestamp,
+        ]
+      )
+
       return
     }
-  
-    console.log('Received MQTT telemetry:', telemetry)
-    io.emit('telemetry', telemetry)
-
-    db.run(
-      `
-      INSERT INTO telemetry (
+    if (messageType === 'status') {
+      const status = {
+        ...data,
         deviceId,
-        voltage,
-        current,
-        power,
-        timestamp
-      )
-      VALUES (?, ?, ?, ?, ?)
-      `,
-      [
-        telemetry.deviceId,
-        telemetry.voltage,
-        telemetry.current,
-        telemetry.power,
-        telemetry.timestamp,
-      ]
-    )
+      }
+      console.log('Received MQTT status:', status)
+      io.emit('device-status', status)
+      return
+    }
   } catch (err) {
     console.error('Failed to process MQTT message:', err.message)
   }
