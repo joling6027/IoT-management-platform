@@ -69,9 +69,12 @@ function maybeChangeDeviceStatus(device) {
 client.on('connect', () => {
   console.log('Simulator connected to MQTT broker')
 
+  devices.forEach(device => {
+    publishStatus(device)
+  })
+
   setInterval(() => {
     devices.forEach(device => {
-      publishStatus(device)
       maybeChangeDeviceStatus(device)
 
       if (device.online) {
