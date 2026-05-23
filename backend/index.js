@@ -55,7 +55,7 @@ mqttClient.on('message', (topic, message) => {
       return
     }
   
-    console.log('Received from MTQQ:', telemetry)
+    console.log('Received MQTT telemetry:', telemetry)
     io.emit('telemetry', telemetry)
 
     db.run(
