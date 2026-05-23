@@ -29,6 +29,7 @@ type Telemetry = {
   online?: boolean;
   lastSeen?: number;
   alert?: string;
+  previousOnline?: boolean;
 };
 
 const devices = ref<Record<string, Telemetry>>({});
@@ -42,10 +43,15 @@ onMounted(() => {
   socket = io("http://localhost:3000");
 
   socket.on("telemetry", (data: Telemetry) => {
+    const existingDevice = devices.value[data.deviceId]
     const alerts: string[] = [];
     const voltage = Number(data.voltage);
     const current = Number(data.current);
     const power = Number(data.power);
+
+    if (existingDevice && existingDevice.online === false) {
+      console.log(`${data.deviceId} RECONNECTED`)
+    }
 
     if (voltage > 228) {
       alerts.push("High voltage");
@@ -70,6 +76,14 @@ onMounted(() => {
       lastSeen: Date.now(),
     };
 
+    if (data.deviceId === selectedDeviceId.value) {
+      history.value.push(data)
+
+      if (history.value.length > 20) {
+        history.value.shift() // keep the latest 20 records
+      }
+    }
+
     if (!selectedDeviceId.value) {
       selectedDeviceId.value = data.deviceId;
       loadHistory(data.deviceId);
@@ -84,7 +98,10 @@ onMounted(() => {
       const diff = Date.now() - device.lastSeen;
 
       if (diff > 5000) {
-        device.online = false;
+        device.previousOnline = device.online
+        device.online = false
+
+        console.log(`${device.deviceId} OFFLINE`)
       }
     });
   }, 5000);
