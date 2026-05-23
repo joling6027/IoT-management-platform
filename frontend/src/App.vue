@@ -19,38 +19,53 @@ use([
   LegendComponent,
 ]);
 
-type Telemetry = {
+type DeviceState = {
   deviceId: string;
-  voltage: string;
-  current: string;
-  power: string;
-  timestamp: number | string;
+  voltage?: string;
+  current?: string;
+  power?: string;
+  timestamp?: number | string;
 
   online?: boolean;
   lastSeen?: number;
   alert?: string;
-  previousOnline?: boolean;
+  lastStatusAt?: number;
 };
 
-const devices = ref<Record<string, Telemetry>>({});
+type Status = {
+  deviceId: string;
+  status: "online" | "offline";
+  timestamp: number;
+};
+
+const devices = ref<Record<string, DeviceState>>({});
 const selectedDeviceId = ref<string | null>(null);
-const history = ref<Telemetry[]>([]);
+const history = ref<DeviceState[]>([]);
 
 let socket: Socket;
-let statusTimer: number;
 
 onMounted(() => {
   socket = io("http://localhost:3000");
 
-  socket.on("telemetry", (data: Telemetry) => {
-    const existingDevice = devices.value[data.deviceId]
+  socket.on("device-status", (data: Status) => {
+    const existingDevice = devices.value[data.deviceId];
+    devices.value[data.deviceId] = {
+      ...existingDevice,
+      deviceId: data.deviceId,
+      online: data.status === "online",
+      lastStatusAt: data.timestamp,
+    };
+  });
+
+  socket.on("telemetry", (data: DeviceState) => {
+    const existingDevice = devices.value[data.deviceId];
     const alerts: string[] = [];
     const voltage = Number(data.voltage);
     const current = Number(data.current);
     const power = Number(data.power);
 
     if (existingDevice && existingDevice.online === false) {
-      console.log(`${data.deviceId} RECONNECTED`)
+      console.log(`${data.deviceId} RECONNECTED`);
     }
 
     if (voltage > 228) {
@@ -70,6 +85,7 @@ onMounted(() => {
     }
 
     devices.value[data.deviceId] = {
+      ...existingDevice,
       ...data,
       online: true,
       alert: alerts.join(", "),
@@ -77,10 +93,10 @@ onMounted(() => {
     };
 
     if (data.deviceId === selectedDeviceId.value) {
-      history.value.push(data)
+      history.value.push(data);
 
       if (history.value.length > 20) {
-        history.value.shift() // keep the latest 20 records
+        history.value.shift(); // keep the latest 20 records
       }
     }
 
@@ -91,25 +107,10 @@ onMounted(() => {
     }
   });
 
-  statusTimer = window.setInterval(() => {
-    Object.values(devices.value).forEach((device) => {
-      if (!device.lastSeen) return;
-
-      const diff = Date.now() - device.lastSeen;
-
-      if (diff > 5000) {
-        device.previousOnline = device.online
-        device.online = false
-
-        console.log(`${device.deviceId} OFFLINE`)
-      }
-    });
-  }, 5000);
 });
 
 onUnmounted(() => {
   socket.disconnect();
-  clearInterval(statusTimer);
 });
 
 const selectedDevice = computed(() => {
@@ -127,7 +128,7 @@ const chartOption = computed(() => ({
   xAxis: {
     type: "category",
     data: history.value.map((item) =>
-      new Date(item.timestamp).toLocaleTimeString(),
+      item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : "",
     ),
   },
   yAxis: [
@@ -202,10 +203,19 @@ function selectDevice(deviceId: string) {
       <p>Power: {{ selectedDevice.power ?? "-" }}</p>
       <p>Temperature: {{ selectedDevice.power ?? "-" }}</p>
       <p>
-        Timestamp: {{ new Date(selectedDevice.timestamp).toLocaleString() }}
+        Timestamp: {{ selectedDevice.timestamp ? new Date(selectedDevice.timestamp).toLocaleString() : "-" }}
       </p>
-      <p>Online: {{ selectedDevice.online }}</p>
       <p>Alert: {{ selectedDevice.alert || "Normal" }}</p>
+      <p>
+        Status:
+        {{
+          selectedDevice.online === undefined
+            ? "Unknown"
+            : selectedDevice.online
+              ? "Online"
+              : "Offline"
+        }}
+      </p>
 
       <VChart
         v-if="history.length"
