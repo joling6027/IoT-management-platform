@@ -30,11 +30,20 @@ type DeviceState = {
   lastSeen?: number;
   alert?: string;
   lastStatusAt?: number;
+  latestAlert?: DeviceAlert;
 };
 
 type Status = {
   deviceId: string;
   status: "online" | "offline";
+  timestamp: number;
+};
+
+type DeviceAlert = {
+  deviceId: string;
+  type: string;
+  severity: "info" | "warning" | "critical";
+  message: string;
   timestamp: number;
 };
 
@@ -107,6 +116,16 @@ onMounted(() => {
     }
   });
 
+  socket.on("device-alert", (data: DeviceAlert) => {
+    console.log("Received device-alert in frontend:", data);
+    const existingDevice = devices.value[data.deviceId];
+
+    devices.value[data.deviceId] = {
+      ...existingDevice,
+      deviceId: data.deviceId,
+      latestAlert: data,
+    };
+  });
 });
 
 onUnmounted(() => {
@@ -193,7 +212,7 @@ function selectDevice(deviceId: string) {
         :key="device.deviceId"
         @click="selectDevice(device.deviceId)"
       >
-        Meter {{ device.deviceId }}
+        Meter {{ device.deviceId }} - {{ device.latestAlert?.message ?? "Normal" }}
       </button>
     </aside>
 
@@ -203,9 +222,21 @@ function selectDevice(deviceId: string) {
       <p>Power: {{ selectedDevice.power ?? "-" }}</p>
       <p>Temperature: {{ selectedDevice.power ?? "-" }}</p>
       <p>
-        Timestamp: {{ selectedDevice.timestamp ? new Date(selectedDevice.timestamp).toLocaleString() : "-" }}
+        Timestamp:
+        {{
+          selectedDevice.timestamp
+            ? new Date(selectedDevice.timestamp).toLocaleString()
+            : "-"
+        }}
       </p>
-      <p>Alert: {{ selectedDevice.alert || "Normal" }}</p>
+      <p>Alert: {{ selectedDevice.latestAlert?.message || selectedDevice.alert || "Normal" }}</p>
+      <p v-if="selectedDevice.latestAlert">
+        Severity: {{ selectedDevice.latestAlert.severity }}
+      </p>
+      <p v-if="selectedDevice.latestAlert">
+        Last alert:
+        {{ new Date(selectedDevice.latestAlert.timestamp).toLocaleString() }}
+      </p>
       <p>
         Status:
         {{

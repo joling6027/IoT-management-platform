@@ -20,23 +20,37 @@ function validateTelemetry(data) {
     return 'Missing deviceId'
   }
 
-  if (isNaN(Number(data.voltage))) {
+  if (typeof data.voltage !== 'number' || !Number.isFinite(data.voltage)) {
     return 'Invalid voltage'
   }
 
-  if (isNaN(Number(data.current))) {
+  if (typeof data.current !== 'number' || !Number.isFinite(data.current)) {
     return 'Invalid current'
+  }
+
+  if (typeof data.power !== 'number' || !Number.isFinite(data.power)) {
+    return 'Invalid power'
   }
 
   return null
 }
 
 const mqttClient = mqtt.connect('mqtt://localhost:1883')
+const TELEMETRY_QOS = 0
+const STATUS_QOS = 1
+const ALERT_QOS = 1
 
 mqttClient.on('connect', () => {
   console.log('backend connected to MQTT broker')
-  mqttClient.subscribe('meter/+/telemetry')
-  mqttClient.subscribe('meter/+/status')
+  mqttClient.subscribe('meter/+/telemetry', {
+    qos: TELEMETRY_QOS,
+  })
+  mqttClient.subscribe('meter/+/status', {
+    qos: STATUS_QOS,
+  })
+  mqttClient.subscribe('meter/+/alert', {
+    qos: ALERT_QOS,
+  })
 })
 
 mqttClient.on('message', (topic, message) => {
@@ -89,6 +103,15 @@ mqttClient.on('message', (topic, message) => {
       }
       console.log('Received MQTT status:', status)
       io.emit('device-status', status)
+      return
+    }
+    if (messageType === 'alert') {
+      const alert = {
+        ...data,
+        deviceId,
+      }
+      console.log('Received MQTT alert:', alert)
+      io.emit('device-alert', alert)
       return
     }
   } catch (err) {

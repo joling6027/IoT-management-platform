@@ -2,6 +2,9 @@ const mqtt = require('mqtt')
 const readline = require('readline')
 
 const MQTT_URL = 'mqtt://localhost:1883'
+const TELEMETRY_QOS = 0
+const STATUS_QOS = 1
+const ALERT_QOS = 1
 let randomStatusChanges = true
 
 const devices = [
@@ -28,10 +31,24 @@ const devices = [
 function createTelemetry(deviceId) {
   return {
     deviceId,
-    voltage: (220 + Math.random() * 10).toFixed(2),
-    current: (5 + Math.random() * 2).toFixed(2),
-    power: (1000 + Math.random() * 300).toFixed(2),
+    voltage: Number((220 + Math.random() * 10).toFixed(2)),
+    current: Number((5 + Math.random() * 2).toFixed(2)),
+    power: Number((1000 + Math.random() * 300).toFixed(2)),
     timestamp: Date.now()
+  }
+}
+
+function createAlert(deviceId, telemetry) {
+  const power = Number(telemetry.power)
+
+  if (power <= 1250) return null
+
+  return {
+    deviceId,
+    type: 'high_power',
+    severity: 'warning',
+    message: `Power is above 1250 W`,
+    timestamp: Date.now(),
   }
 }
 
@@ -39,7 +56,10 @@ function publishTelemetry(device) {
   const data = createTelemetry(device.id)
   const topic = `meter/${device.id}/telemetry`
 
-  device.client.publish(topic, JSON.stringify(data))
+  device.client.publish(topic, JSON.stringify(data), {
+    qos: TELEMETRY_QOS,
+  })
+  publishAlert(device, data)
 
   console.log(`Published to ${topic}:`, data)
 }
@@ -52,9 +72,25 @@ function publishStatus(device) {
   }
   const topic = `meter/${device.id}/status`
 
-  device.client.publish(topic, JSON.stringify(status))
+  device.client.publish(topic, JSON.stringify(status), {
+    qos: STATUS_QOS
+  })
 
   console.log(`Published to ${topic}:`, status)
+}
+
+function publishAlert(device, telemetry) {
+  const alert = createAlert(device.id, telemetry)
+
+  if (!alert) return
+
+  const topic = `meter/${device.id}/alert`
+
+  device.client.publish(topic, JSON.stringify(alert), {
+    qos: ALERT_QOS,
+  })
+
+  console.log(`Published to ${topic}:`, alert)
 }
 
 function getNextStatusDelay(device) {
@@ -78,7 +114,7 @@ function connectDevice(device) {
         reason: 'unexpected_disconnect',
         timestamp: Date.now(),
       }),
-      qos: 1,
+      qos: STATUS_QOS,
       retain: false,
     },
   })
@@ -203,8 +239,8 @@ setInterval(() => {
     if (device.online && device.client.connected) {
       publishTelemetry(device)
     }
-  });
-}, 2000);
+  })
+}, 2000)
 
 const commandLine = readline.createInterface({
   input: process.stdin,
